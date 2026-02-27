@@ -42,14 +42,13 @@ MoMoA is an experimental architecture tuned for the Software Development Life Cy
 
 ### Setup & Configuration
 
-1. **Environment:** Create a `.env` file in the server directory with your `GEMINI_API_KEY` and `GITHUB_TOKEN`.
-2. **Ignore Rules:** Create an `.agentignore` file in your project root. This follows standard `.gitignore` syntax to prevent the agent from reading heavy dependencies (like `node_modules`) or sensitive secrets.
-3. **Launch Server:**
+1. **Environment:** Create a `.env` file in the server directory with your `GEMINI_API_KEY`
+2. **Launch Server:**
 ```bash
 npm install
 npm run dev
 ```
-
+3. **Ignore Rules:** Create an `.agentignore` file in the root of the project folder if you plan to have MoMoA run against an existing project. This follows standard `.gitignore` syntax to prevent the agent from reading heavy dependencies (like `node_modules`) or sensitive secrets.
 4. **Launch Client:** 
 Ensure you have `websocket-client` installed via pip:
 ```bash
