@@ -54,6 +54,8 @@ interface InitialRequestData {
   environmentInstructions?: string;
   notWorkingBuild?: boolean;
   weaveId?: string;
+  maxDurationMs?: number;
+  gracePeriodMs?: number;
 }
 
 /**
@@ -283,7 +285,9 @@ async function handleInitialRequest(clientUUID: string, requestData: InitialRequ
       mode,
       projectSpecification: requestProjectSpecification,
       environmentInstructions,
-      notWorkingBuild
+      notWorkingBuild,
+      maxDurationMs,
+      gracePeriodMs
     } = requestData;
 
     const projectSpecification = "";
@@ -350,7 +354,9 @@ async function handleInitialRequest(clientUUID: string, requestData: InitialRequ
       environmentInstructions,
       notWorkingBuild,
       controller.signal,
-      mode
+      mode,
+      maxDurationMs,
+      gracePeriodMs
     );
 
     orchestratorInstances.set(clientUUID, orchestrator);

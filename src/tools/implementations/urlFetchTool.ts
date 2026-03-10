@@ -63,8 +63,7 @@ export const urlFetchTool: MultiAgentTool = {
     if (cache.has(url)) {
       context.sendMessage(JSON.stringify({
           status: "PROGRESS_UPDATES",
-          current_status_message: `Using cached content from \`${url}\``,
-          completed_status_message: `Fetching content from \`${url}\``,
+          completed_status_message: `Using cached content from \`${url}\``,
         })
       );
       return cache.get(url)!;
@@ -73,7 +72,6 @@ export const urlFetchTool: MultiAgentTool = {
     // Cache Miss: Proceed with fetch
     context.sendMessage(JSON.stringify({
         status: "PROGRESS_UPDATES",
-        current_status_message: `Fetching content from \`${url}\``,
         completed_status_message: `Fetching content from \`${url}\``,
       })
     );

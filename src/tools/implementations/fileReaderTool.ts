@@ -86,45 +86,56 @@ export const fileReaderTool: MultiAgentTool = {
       const mimeType = getBinaryMimeType(filename);
       
       if (mimeType) {
-         const base64Data = context.binaryFileMap.get(filename);
-         if (base64Data) {
-             // Determine the label based on the MIME type category
-             let fileTypeLabel = 'file';
-             if (mimeType.startsWith('image/')) fileTypeLabel = 'image';
-             else if (mimeType === 'application/pdf') fileTypeLabel = 'document';
-             else if (mimeType.startsWith('audio/')) fileTypeLabel = 'audio file';
-             else if (mimeType.startsWith('video/')) fileTypeLabel = 'video';
+        const base64Data = context.binaryFileMap.get(filename);
+        if (base64Data) {
+          // Determine the label based on the MIME type category
+          if (mimeType.startsWith('text/')) {
+            const trimmedContent = base64Data.slice(0, 10000);
+            const explainString = `---File '${filename}' exists but is too large to be added to the chat history. Providing only the first 10,000 characters.---`;
+            const fileString = `${prefix}\n${trimmedContent}\n[...Remaining file truncated to conserve context window space...]\n${suffix}`;
+            return {
+              result: `${explainString}\n${fileString}`,
+              transcriptReplacementID: filename,
+              transcriptReplacementString: `${explainString}\n${prefix}\n${replacementString}\n${suffix}`
+            }
+          }
 
-             if (context.transcriptsToUpdate) {
-                const targets = context.transcriptsToUpdate.length > 1 
-                    ? context.transcriptsToUpdate.slice(1) 
-                    : context.transcriptsToUpdate;
+          let fileTypeLabel = 'file';
+          if (mimeType.startsWith('image/')) fileTypeLabel = 'image';
+          else if (mimeType === 'application/pdf') fileTypeLabel = 'document';
+          else if (mimeType.startsWith('audio/')) fileTypeLabel = 'audio file';
+          else if (mimeType.startsWith('video/')) fileTypeLabel = 'video';
 
-                 targets.forEach(transcript => {
-                     transcript.addImage(
-                         `This is the ${fileTypeLabel} \`${filename}\``,
-                         base64Data,
-                         mimeType
-                     );
-                 });
-             }
-             
-             return {
-                 result: `The ${fileTypeLabel} '${filename}' is the previous entry in the chat history.`,
-                 transcriptReplacementID: filename,
-                 transcriptReplacementString: `[${fileTypeLabel.charAt(0).toUpperCase() + fileTypeLabel.slice(1)} '${filename}' is out of date]`
-             };
-         }
+          if (context.transcriptsToUpdate) {
+            const targets = context.transcriptsToUpdate.length > 1 
+                ? context.transcriptsToUpdate.slice(1) 
+                : context.transcriptsToUpdate;
+
+              targets.forEach(transcript => {
+                  transcript.addImage(
+                      `This is the ${fileTypeLabel} \`${filename}\``,
+                      base64Data,
+                      mimeType
+                  );
+              });
+          }
+          
+          return {
+              result: `The ${fileTypeLabel} '${filename}' is the previous entry in the chat history.`,
+              transcriptReplacementID: filename,
+              transcriptReplacementString: `[${fileTypeLabel.charAt(0).toUpperCase() + fileTypeLabel.slice(1)} '${filename}' is out of date]`
+          };
+        }
       }
 
       return {
-        result: `---File '${filename}' exists but this tool can't read the contents of non-supported binary files---`,
+        result: `---File '${filename}' exists but the file may be too large, or it may be an unsupported binary file---`,
         transcriptReplacementID: filename,
-        transcriptReplacementString: `---File '${filename}' exists but this tool can't read the contents of non-supported binary files---`
+        transcriptReplacementString: `---File '${filename}' exists but the file may be too large, or it may be an unsupported binary file---`
       };
     }
 
-    // Handle "Secet Files"
+    // Handle "Secret Files"
     if (context.fileMap.has(filename) && filename.startsWith('SECRET__')) {
       const noSecrets = `---File '${filename}' exists but this tool can't share the contents of SECRET files---`;
       return {
@@ -225,6 +236,12 @@ function getBinaryMimeType(filename: string): string | null {
         case 'webm': return 'video/webm';
         case 'wmv': return 'video/wmv';
         case '3gpp': return 'video/3gpp';
+
+        // Text files
+        case 'txt':
+        case 'csv':
+        case 'tsv':
+        case 'log': return 'text/text';
 
         default: return null;
     }

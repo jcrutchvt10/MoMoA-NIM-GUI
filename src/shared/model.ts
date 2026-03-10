@@ -56,6 +56,8 @@ export interface InitialRequestData {
   environmentInstructions?: string;
   notWorkingBuild?: boolean;
   weaveId?: string;
+  maxDurationMs?: number;
+  gracePeriodMs?: number;
 }
 
 export interface UserSecrets {

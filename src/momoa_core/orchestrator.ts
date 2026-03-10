@@ -39,6 +39,9 @@ import { MultiAgentToolContext, ToolConfirmationOutcome, GuidanceType, Infrastru
 import { WorkPhase } from './workPhase.js'; // Import the WorkPhase class
 import { LlmBlockedError } from '../shared/errors.js';
 import { generateSessionTitle } from '../utils/sessionTitleGenerator.js';
+import { withDeadline } from '../utils/timeoutHelper.js';
+import { CleanFormattedDateTime } from '../utils/dateTimeStrings.js';
+import { checkContainerMemory } from '../utils/memoryChecker.js';
 
 const EXISTING_FILES_ID = "EXISTING_FILES_ID";
 const EXISTING_FAQ_ID = "EXISTING_FAQ_ID";
@@ -75,6 +78,9 @@ export class Orchestrator {
   private signal?: AbortSignal;
   private mode?: ServerMode;
   private startTime: number = 0;
+  private maxDurationMs?: number;
+  private gracePeriodMs?: number;
+  private hasWarnedTimeLow: boolean = false;
 
   /**
    * Initializes a new instance of the Orchestrator.
@@ -107,7 +113,9 @@ export class Orchestrator {
     environmentInstructions?: string,
     notWorkingBuild?: boolean,
     signal?: AbortSignal,
-    mode?: ServerMode
+    mode?: ServerMode,
+    maxDurationMs?: number,
+    gracePeriodMs?: number
   ) {
     this.initialPrompt = initialPrompt;
     this.initialImage = initialImage;
@@ -140,6 +148,9 @@ export class Orchestrator {
     });
 
     this.mode = mode;
+
+    this.maxDurationMs = maxDurationMs;
+    this.gracePeriodMs = gracePeriodMs ?? (5 * 60 * 1000);
 
     this.toolContext = {
       fileMap: this.fileMap,
@@ -274,6 +285,10 @@ export class Orchestrator {
   public async run(): Promise<void> {
     this.startTime = Date.now();
 
+    this.toolContext.projectDeadlineMs = this.maxDurationMs ? this.startTime + this.maxDurationMs : undefined;
+    this.toolContext.gracePeriodMs = this.gracePeriodMs;
+    this.hasWarnedTimeLow = false;
+
     const sessionTitle = await generateSessionTitle(this.initialPrompt.trim(), this.multiAgentGeminiClient) ?? "New Task";
     await this.updateProgressLog(`# ${sessionTitle}\n`);
     await this.updateProgressLog("## Agentic Loop Initialization");
@@ -297,6 +312,11 @@ export class Orchestrator {
       this.overseer = await Overseer.createAndStart(OVERSEER_FREQUENCY_MINS * 60 * 1000, this.assumptions, this.multiAgentGeminiClient);
       this.toolContext.overseer = this.overseer;
       await this.updateProgressLog(`Initiating Project Overseer with ${OVERSEER_FREQUENCY_MINS} minute frequency.`)
+
+      if (this.maxDurationMs)
+        await this.updateProgressLog(`This deployment is limited to ${(this.maxDurationMs / 60 / 1000)} minutes per task session.`)
+
+      await this.updateProgressLog(checkContainerMemory());
       
       let { preamble } = await getExpertPrompt('orchestrator');
       preamble = await replaceRuntimePlaceholders(preamble,
@@ -322,7 +342,7 @@ export class Orchestrator {
           current_status_message: welcomeMessage,
         }));
       } catch {}
-      
+
       if (this.mode && this.mode != ServerMode.ORCHESTRATOR)
         await this.updateLog(`# Mode: ${this.mode}`);        
 
@@ -340,7 +360,16 @@ export class Orchestrator {
       // Enrich the initial prompt.
       await this.updateProgressLog('\n## Enriched User Prompt\n----');
 
-      this.initialPrompt = await enrichPrompt("prompt-enricher", this.initialPrompt.trim(), this.assumptions, this.projectSpecification ?? "---No specification provided---", this.multiAgentGeminiClient, this.sendMessage, this.initialImage, this.initialImageMimeType);
+      // Research Project-specific prompt
+      // const researchPrompt = await replaceRuntimePlaceholders(await getAssetString("researcher_enricher"), {
+      //   ResearchProblem : this.initialPrompt.trim()
+      // });
+      // this.initialPrompt = researchPrompt;
+
+      const recommendations = await enrichPrompt("prompt-enricher", this.initialPrompt.trim(), this.assumptions, this.projectSpecification ?? "---No specification provided---", this.multiAgentGeminiClient, this.sendMessage, this.initialImage, this.initialImageMimeType);
+
+      const dateTimeString = CleanFormattedDateTime(new Date());
+      this.initialPrompt = `${this.initialPrompt.trim()}\n\n${recommendations}\n\nThe current date and time is: ${dateTimeString}`;
 
       await this.updateProgressLog(`\`\`\`\`\n${this.initialPrompt}\n\`\`\`\``);
       await this.updateProgressLog('----\n');
@@ -419,6 +448,32 @@ export class Orchestrator {
           isDone = true;
           await this.endOrchestrator();
           continue;
+        }
+
+        const now = Date.now();
+        if (this.toolContext.projectDeadlineMs && this.toolContext.gracePeriodMs) {
+          const timeRemaining = this.toolContext.projectDeadlineMs - now;
+
+          // Hard Deadline: Out of time, force shut down immediately
+          if (timeRemaining <= 0) {
+            await this.updateLog('Hard time limit reached. Forcing Orchestrator shutdown.');
+            this.sendMessage(JSON.stringify({
+              status: 'PROGRESS_UPDATES',
+              completed_status_message: '## Time Limit Exceeded\n\nThe allocated time for this run has expired. Shutting down.'
+            }));
+            isDone = true;
+            await this.endOrchestrator();
+            continue;
+          } 
+          // Soft Deadline: Under grace period mins, force wrap-up
+          else if (timeRemaining <= this.toolContext.gracePeriodMs && !this.hasWarnedTimeLow) {
+            this.hasWarnedTimeLow = true;
+            const timeWarning = `CRITICAL WARNING: The project environment will force shut down within the next 3 turns. You MUST immediately cease starting new work phases and return your final output using @RETURN.`;
+            
+            this.transcriptManager.addEntry('user', timeWarning);
+            await this.updateLog(`# Time Warning Triggered:\n${timeWarning}`, false);
+            await this.updateProgressLog(`\n### System Alert\nApproaching time limit. Forcing completion.`);
+          }
         }
 
         turnCount++;
@@ -701,8 +756,11 @@ ${retrospectiveObject.other_pertinent_notes || '--None--'}`.trim();
           await this.updateProgressLog(`\n### '${tool?.displayName}' Invoked`);
 
           try {
-            const toolResult = await executeTool(toolRequest.toolName, toolRequest.params, this.toolContext);
-
+            const toolPromise = executeTool(toolRequest.toolName, toolRequest.params, this.toolContext);
+            const toolResult = this.toolContext.projectDeadlineMs
+              ? await withDeadline(toolPromise, this.toolContext.projectDeadlineMs, this.signal)
+              : await toolPromise;
+            
             this.transcriptManager.addEntry('user', toolResult.result, { documentId: toolResult.transcriptReplacementID, replacementIfSuperseded: toolResult.transcriptReplacementString});
             
             let toolResponseLogString = toolResult.result;

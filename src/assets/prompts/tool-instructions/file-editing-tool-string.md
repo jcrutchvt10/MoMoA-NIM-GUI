@@ -20,9 +20,15 @@ END${strings/underscore}EDIT
     * **Crucially: Having unchanged text (context) appear in both TO${strings/underscore}REPLACE and NEW${strings/underscore}TEXT is perfectly normal and often required for correctly targeting and executing the edit. This is NOT an error.**
     * For example, replacing 'TO${strings/underscore}REPLACE:{Line 1\nLine 2\nLine 3}' with 'NEW${strings/underscore}TEXT:{Line 1\nLine 2 MODIFIED\nLine 3}' correctly modifies Line 2 while using Lines 1 and 3 as context.
   * **Respect Code Structure:** When editing code files, pay strict attention to indentation, code blocks (functions, classes, loops, conditionals), and syntax. Edits must not break the structural integrity or syntax of the code. Ensure new code is placed at the correct indentation level and *outside* of unrelated code blocks unless specifically intended.
-  * **Overwriting File**: Leave TO${strings/underscore}REPLACE empty (TO${strings/underscore}REPLACE:{}). Use with extreme caution.
-  * **Deleting Files**: You can delete a file by overwriting the whole file (TO${strings/underscore}REPLACE:{}) with a blank NEW${strings/underscore}TEXT value (NEW${strings/underscore}TEXT:{}). This step is required for all deletions, including files that are already empty. Once you edit the file to be empty, it will be deleted. Always check if a file exists by reading it before deleting it. Do not delete files that don't exist.
-  * **Renaming Files**: Renaming files is not supported by this tool.
+  * **Appending to a File**: To add new content (like a new function, class, or report section) to the very end of a file, use the explicit APPEND command. This does not require you to match existing text.
+    * Set `TO${strings/underscore}REPLACE:{APPEND}`
+    * Set `NEW${strings/underscore}TEXT:{Your new text to add to the bottom of the file}`
+  * **Creting or Overwriting a File**: Use with extreme caution. To create a new file, or replace an existing file, you must explicitly declare it (empty brackets will result in an error). If the file exists, this will delete the existing content and replace it with only the new text.
+    * Set `TO${strings/underscore}REPLACE:{OVERWRITE_ENTIRE_FILE}`
+    * Set `NEW${strings/underscore}TEXT:{The complete new file content}`
+  * **Deleting Files**: You can delete a file by overwriting the whole file with a blank value. Always check if a file exists by reading it before deleting it. Do not delete files that don't exist.
+    * Set `TO${strings/underscore}REPLACE:{OVERWRITE_ENTIRE_FILE}`
+    * Set `NEW${strings/underscore}TEXT:{}`
   * **Inserting Text**: To insert text identify a unique one or two consecutive lines (or small block of text), TO${strings/underscore}REPLACE immediately *before* or *after* the desired insertion point. This is the **anchor**.
     * **Preferred Insertion Strategy:** Whenever feasible, **aim to choose an anchor that exists immediately *before* the location where the new text should be added.** This means you will be inserting the new text *after* the anchor.
     * Construct the NEW${strings/underscore}TEXT field by combining exactly two parts:
@@ -45,9 +51,8 @@ Anchor Text Line 1
 Anchor Text Line 2
 Your New Text Here
 ```
-        * _Note:_ This is the standard method for adding new top-level code blocks (functions, classes) to the end of a file. See the 'Adding New Top-Level Code Blocks' section for specific guidance on choosing anchors in code files.
         * **(Alternative) Inserting BEFORE the Anchor:** This is used if the only practical unique anchor is immediately *after* the desired insertion location. Place the new text first in NEW${strings/underscore}TEXT, followed by the single instance of the anchor text.
-        * For Example:
+          * For Example:
 ```
 TO${strings/underscore}REPLACE:{Anchor Text Line 1
 Anchor Text Line 2}

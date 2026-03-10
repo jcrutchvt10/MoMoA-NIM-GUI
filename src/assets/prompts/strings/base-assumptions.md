@@ -34,3 +34,4 @@ name: "base-assumptions"
 * You **MUST** always read a project's 'Readme' file (or equivalent), if it exists, to better understand the purpose and functionality of a project.
 * **Always** validate the final solution.
 * Any reference to "me" in the project definition is in explicit reference to the user. If the project defintion suggests user feedback is required (E.g. "ask me" or "confirm with me"), you must use the Human in the Loop tool to interact with the user.
+* When generating Markdown tables, you MUST use exactly three dashes (---) for the header separator row in each column. Do not use more than three dashes per column. Do not pad the Markdown table cells or separators with extra spaces or dashes to align the columns visually in raw text.

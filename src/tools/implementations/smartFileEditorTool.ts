@@ -27,6 +27,7 @@ import { fuzzyReplace } from '../../utils/fuzzyStringReplacer.js';
 import { updateDiffInAllTranscripts } from './revertFileTool.js';
 import { isLockFile } from '../../utils/diffGenerator.js';
 import { createTwoFilesPatch } from 'diff';
+import { logFilename } from '../../config/config.js';
 
 const filenameStart = `DOC/EDIT{`;
 const filenameEnd = `}\nTO\u005fREPLACE`;
@@ -69,7 +70,11 @@ export const smartFileEditorTool: MultiAgentTool = {
 
     if (!filename || !originalEditRequest)
       return {result: `Invalid syntax for the ${this.displayName} Tool. ${fixInstructions}`};
-      
+    
+    if (filename.toLowerCase() === logFilename.toLowerCase()) {
+      return {result: `The Research Log \`${filename}\` cannot be manually edited. Use the 'Research Log Updater' Tool (or start a new Workphase to use this tool) to add new entries including corrections and clarifications.`};
+    }
+
     const parameterExtractionResult = await extractEditRequestParameters(originalEditRequest);
     const syntaxIssues = (parameterExtractionResult).success ? "--No issues have yet been identified with the request--" : parameterExtractionResult.error;
 
@@ -431,9 +436,7 @@ export const smartFileEditorTool: MultiAgentTool = {
         newTextStartIndex > toReplaceEndIndex && newTextEndIndex > newTextStartIndex) {
         
         const toReplaceContent = editRequest.substring(toReplaceStartIndex + toReplaceStart.length, toReplaceEndIndex);
-        const replacementContent = editRequest.substring(newTextStartIndex + replacementTextStart.length, newTextEndIndex);
-
-        if (toReplaceContent.trim() === '' && replacementContent.trim() !== '') {
+        if (toReplaceContent.trim() === 'OVERWRITE_ENTIRE_FILE') {
             isUnambiguousCreate = true;
         }
     }
@@ -509,18 +512,27 @@ function editFile(filename: string, fromString: string, toString: string, contex
   const isBinary = context.binaryFileMap.has(filename);
   const fileExists = context.fileMap.has(filename);
 
+  const isOverwrite = fromString.trim() === 'OVERWRITE_ENTIRE_FILE';
+  const isAppend = fromString.trim() === 'APPEND';
+  const isEmptyReplace = fromString.trim() === '';
+
   // Handle binary file logic first
   if (isBinary) {
-    if (!fromString && !toString) {
+    if (isOverwrite && !toString) {
         context.binaryFileMap.delete(filename);
         result = `'${filename}' has been successfully deleted.`;
         progressUpdate = result;
     } else {
-        result = `The attempted edit of '${filename}' failed because it is a binary file, which cannot be edited. You can only delete binary files by providing empty TO_REPLACE and NEW_TEXT sections.`;
+        result = `The attempted edit of '${filename}' failed because it is a binary file, which cannot be edited. You can only delete binary files by using TO_REPLACE:{OVERWRITE_ENTIRE_FILE} and an empty NEW_TEXT.`;
         progressUpdate = `The attempted edit of '${filename}' failed because it is a binary file.`;
     }
     worklog = result;
-  } else if (!fromString) {
+  } else if (isEmptyReplace) {
+    // Explicitly block the old empty bracket loophole to prevent accidental deletions/overwrites
+    result = `The attempted edit of '${filename}' failed because TO_REPLACE was empty. To overwrite or delete a file, you must explicitly use TO_REPLACE:{OVERWRITE_ENTIRE_FILE}. To append to the end of a file, use TO_REPLACE:{APPEND}.`;
+    progressUpdate = result;
+    worklog = result;
+  } else if (isOverwrite) {
     if ((toString || '').trim() === '' && fileExists) {
         context.fileMap.delete(filename);
         result = `'${filename}' has been successfully deleted.`;
@@ -537,8 +549,22 @@ function editFile(filename: string, fromString: string, toString: string, contex
              progressUpdate = `${result}\n\`\`\`\`\n${toString}\n\`\`\`\``;
         }
     }
+  } else if (isAppend) {
+    if (isLock) {
+      result = `The attempted edit of '${filename}' failed because it is a machine-generated lock file. Manual edits to lock files are prohibited.`;
+      progressUpdate = result;
+      worklog = result;
+    } else {
+      const existingFileContent = context.fileMap.get(filename) || '';
+      // Only add a newline if the file already has content
+      const newContent = existingFileContent ? `${existingFileContent}\n${toString}` : toString;
+      context.fileMap.set(filename, newContent);
+      result = `Successfully appended new text to the end of \`${filename}\`.`;
+      progressUpdate = `${result}\n\`\`\`\`\n+ ${toString}\n\`\`\`\``;
+      worklog = result;
+    }
   } else if (!fileExists && (fromString)) {
-      result = `The file '${filename}' doesn't exist, so I can't replace an existing string within it. Make sure '${filename}' is the right filename and if so, replace the entire contents to apply this edit.`;
+      result = `The file '${filename}' doesn't exist, so I can't replace an existing string within it. Make sure '${filename}' is the right filename and if so, use the OVERWRITE_ENTIRE_FILE command to apply this edit.`;
       worklog = `Smart Editor requested string replace from a file that doesn't exist.`; 
       progressUpdate = worklog;
   } else {

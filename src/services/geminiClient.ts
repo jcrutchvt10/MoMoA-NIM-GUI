@@ -599,8 +599,23 @@ export class GeminiClient {
           throw new Error('Invalid or empty response from API.');
         }
         this.updateTokenUsage(model, response);
-
         this.apiPolicyManager.reportApiSuccess(this.apiName, model);
+
+        const firstCandidate = response.candidates[0];
+        if (firstCandidate?.content?.parts) {
+          for (const part of firstCandidate.content.parts) {
+            if (part.text) {
+              const runawayLoopPattern = /(.)\1{50,}\s*$/;
+              
+              if (runawayLoopPattern.test(part.text)) {
+                part.text = "[System Note: This response was discarded because it entered a runaway token loop (excessive character repetition). Please resume the task and ensure formatting is concise and does not use excessive repeated characters.]";
+              } else {
+                part.text = part.text.replace(/-{10,}/g, '---');
+              }
+            }
+          }
+        }
+
         return response;
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);

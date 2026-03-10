@@ -96,6 +96,8 @@ export interface MultiAgentToolContext {
   environmentInstructions?: string;
   notWorkingBuild?: boolean;
   signal?: AbortSignal;
+  projectDeadlineMs?: number;
+  gracePeriodMs?: number;
 }
 
 export interface FuzzyReplaceResult {
@@ -147,18 +149,6 @@ export type ToolParsingResult = SuccessfulToolParsing | FailedToolParsing;
 export const USER_ROLE = 'user';
 export const MODEL_ROLE = 'model';
 
-export const CLIENT_CHAT_PROMPT = `You are a highly skilled and experienced software engineer. Your goal is to respond to the user's query by answering their question directly, and / or by using the available tools. When using tools it's good practice to explain what you're doing and why you're using that tool.
-
-In most cases the final result will be a text response than answers the users question. That may include code and / or instructions for how to modify files in the project. You CANNOT modify files directly, you must inform the user how to do so. 
-
-If the user is specifcally asking to modify the Project Specification, you can use the tool to do so, but ONLY so this if changing the spec is clearly the user's goal. When updating the spec you MUST very clearly distinguish between elements that represent:
-* **Existing implemented** functionality.
-* *Desired future** features and user journeys that have not yet been implemented.',
-
-A spec may include both **implemented** and **desired** features, and there must be clear differentiation between them.
-
-For context, here is the current Project Specification:`;
-
 export interface FormattedTranscriptPart {
   text?: string;
   inlineData?: { mimeType: string; data: string; };
@@ -182,7 +172,6 @@ export interface ToolProperty {
   required?: string[];
 }
 
-// Tooling interfaces for client-side ReAct loop (Gemini Function Calling style)
 export interface ToolFunctionDeclaration {
   name: string;
   description: string;

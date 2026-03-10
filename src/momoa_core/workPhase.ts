@@ -28,6 +28,7 @@ import { Overseer } from "./overseer";
 import { Expert, MultiAgentToolContext, GuidanceType } from "./types";
 import { getFAQs } from "../utils/faqs";
 import { getFormattedCacheContents } from "../tools/implementations/urlFetchTool";
+import { withDeadline } from "../utils/timeoutHelper";
 
 const NO_RESULT_STRING = 'Sorry, this Work Phase was unable to perform the allocated task.';
 
@@ -347,10 +348,11 @@ ${this.task}
     this.updateLog(`# ${workphaseName} started with ${formattedExpertList}.`);
     this.updateProgressLog(`\n### ${workphaseName} Workphase\nAdded ${formattedExpertList} as collaborators.`);
 
+    let hasWarnedTimeLow = false;
     let done = false;
     let turn = -1;
     let currentExpertIndex = -1;
-
+ 
     while (!done) {
       if (this.signal?.aborted) {
         this.updateLog('Work Phase received abort signal. Cancelling...');
@@ -365,6 +367,26 @@ ${this.task}
         done = true; // Set done to true to exit the loop
         // Do not call endWorkphase here, as it generates summaries which might be undesired on abort.
         break; 
+      }
+
+      const now = Date.now();
+      if (this.toolContext.projectDeadlineMs && this.toolContext.gracePeriodMs) {
+        const timeRemaining = this.toolContext.projectDeadlineMs - now;
+
+        if (timeRemaining <= 0) {
+          await this.updateLog('Hard time limit reached within Work Phase. Forcing exit.');
+          await this.updateProgressLog("#### Time Limit Reached. Forcing End of Work Phase.");
+          done = true;
+          return await this.endWorkphase();
+        } 
+        else if (timeRemaining <= this.toolContext.gracePeriodMs && !hasWarnedTimeLow) {
+          hasWarnedTimeLow = true;
+          const timeWarning = `CRITICAL WARNING: The project environment will shut down within the next 3 turns. You MUST immediately record the results of any experiments, and then return your best attempt at the result using @RETURN.`;
+          
+          this.addToEachExpertTranscript('user', timeWarning);
+          await this.updateLog(`Soft time limit reached. Alerting Work Phase experts to wrap up.`);
+          await this.updateProgressLog(`\n#### System Alert\nTime running out. Forcing Work Phase completion.`);
+        }
       }
 
       currentExpertIndex = (currentExpertIndex + 1) % this.experts.length;
@@ -487,7 +509,12 @@ ${this.task}
           await this.updateProgressLog(`\n#### '${tool?.displayName}' Invoked`)
         }
         try {
-          const toolResult = await executeTool(toolRequest.toolName, toolRequest.params, this.toolContext);
+
+          const toolPromise = executeTool(toolRequest.toolName, toolRequest.params, this.toolContext);
+          const toolResult = this.toolContext.projectDeadlineMs
+            ? await withDeadline(toolPromise, this.toolContext.projectDeadlineMs, this.signal)
+            : await toolPromise;
+
           this.addToEachExpertTranscript('user', toolResult.result, { documentId: toolResult.transcriptReplacementID, replacementIfSuperseded: toolResult.transcriptReplacementString});
           let toolResponseLogString = toolResult.result;
           toolResponseLogString = replaceContentBetweenMarkers(toolResponseLogString, filePrefix, fileSuffix, logReplacementString);
