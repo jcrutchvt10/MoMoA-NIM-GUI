@@ -17,7 +17,7 @@
 import { MultiAgentTool } from '../multiAgentTool.js';
 import { MultiAgentToolContext, MultiAgentToolResult, ToolParsingResult } from '../../momoa_core/types.js';
 import { fileNameLookup } from '../../utils/fileNameLookup.js';
-import { generateDiffString, isLockFile, getLockFileHiddenPlaceholder } from '../../utils/diffGenerator.js'; // UPDATED IMPORT
+import { generateDiffString, isLockFile, getLockFileHiddenPlaceholder } from '../../utils/diffGenerator.js';
 import { getAssetString } from '../../services/promptManager.js';
 import { updateFileEntry } from '../../utils/fileAnalysis.js';
 
@@ -112,10 +112,10 @@ export const revertFileTool: MultiAgentTool = {
 
     // If a revert or deletion succeeded, update all transcripts
     if (revertSucceeded) {
-      context.sendMessage(JSON.stringify({
-          status: "PROGRESS_UPDATES",
-          completed_status_message: `Undoing changes to \`${filename}\`, and reverting it to its original content.`,
-      }));
+      context.sendMessage({
+          type: 'PROGRESS_UPDATE',
+          message: `Undoing changes to \`${filename}\`, and reverting it to its original content.`,
+      });
 
       // If the file was not deleted, force a re-analysis
       // to update its description and remove any "---DELETED---" markers.

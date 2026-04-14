@@ -174,11 +174,11 @@ export const julesTool: MultiAgentTool = {
       toolResponse += `\n${logMessage}`;
     };
 
-    const updateProgress = (message: string) => {
-      context.sendMessage(JSON.stringify({
-        status: "PROGRESS_UPDATES",
-        completed_status_message: message
-      }));
+    const updateProgress = (message: string | Promise<string>) => {
+      context.sendMessage({
+        type: 'PROGRESS_UPDATE',
+        message: message
+      });
     }
 
     if (!context.secrets.julesApiKey)
@@ -437,8 +437,12 @@ You will now receive questions from Jules.`;
         }
 
         // 2. Format the activity using the new helper
-        const formattedLog = await formatActivityContent(activity, VerbosityType.AISummarize, context.multiAgentGeminiClient, request);
-        fullJulesLog.push(formattedLog);
+        const formattedLogPromise = formatActivityContent(activity, VerbosityType.AISummarize, context.multiAgentGeminiClient, request);
+
+        formattedLogPromise.then(msg => {
+          fullJulesLog.push(msg);
+          updateLog(msg, includeInResponse);
+        });
 
         // 3. Determine visibility (Filtering noisy logs from immediate user output)
         let includeInResponse = true;
@@ -450,8 +454,7 @@ You will now receive questions from Jules.`;
         }
         
         // Always update the log with the formatted content
-        updateLog(formattedLog, includeInResponse);
-        updateProgress(formattedLog);
+        updateProgress(formattedLogPromise);
       }
     }
 

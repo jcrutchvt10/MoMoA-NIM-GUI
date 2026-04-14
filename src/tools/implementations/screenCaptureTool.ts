@@ -20,7 +20,6 @@ import {
     MultiAgentToolResult, 
     ToolParsingResult } from '../../momoa_core/types.js';
 import { getToolPreamblePrompt, replaceRuntimePlaceholders } from '../../services/promptManager.js';
-import { executeTool } from '../multiAgentToolRegistry.js';
 import { julesTool } from './julesTool.js';
 
 export const screenCaptureTool: MultiAgentTool = {

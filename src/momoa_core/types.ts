@@ -77,7 +77,7 @@ export interface MultiAgentToolContext {
   originalFilesSet: Set<string>;
   originalFileMap: Map<string, string>;
   originalBinaryFileMap: Map<string, string>;
-  sendMessage: (message: string) => void;
+  sendMessage: (message: any) => void;
   multiAgentGeminiClient: GeminiClient;
   experts: string[];
   transcriptsToUpdate: TranscriptManager[];

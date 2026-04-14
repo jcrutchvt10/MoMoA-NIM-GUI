@@ -37,10 +37,10 @@ export const stitchTool: MultiAgentTool = {
 
   async execute(params: Record<string, string>, context: MultiAgentToolContext): Promise<MultiAgentToolResult> {
     const updateProgress = async (message: string, tellOverseer: boolean = false) => {
-      context.sendMessage(JSON.stringify({
-        status: 'PROGRESS_UPDATES',
-        completed_status_message: message,
-      }));
+      context.sendMessage({
+        type: 'PROGRESS_UPDATE',
+        message: message,
+      });
       if (tellOverseer)
         context.overseer?.addLog(message);
     };
