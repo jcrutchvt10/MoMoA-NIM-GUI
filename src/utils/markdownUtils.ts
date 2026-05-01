@@ -64,12 +64,16 @@ export function toKebabCase(str: string | undefined): string {
   if (!str) return '';
 
   return str
+    // Trim leading/trailing whitespace before conversion
+    .trim()
     // Find transitions from a lowercase/number to an uppercase letter
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     // Replace spaces and underscores with a hyphen
     .replace(/[\s_]+/g, '-')
     // Convert the entire string to lowercase
-    .toLowerCase();
+    .toLowerCase()
+    // Strip any leading or trailing hyphens produced by the above
+    .replace(/^-+|-+$/g, '');
 }
 
 export const aOrAn = (word: string): string => 'aeiou'.includes(word[0]?.toLowerCase()) ? 'an' : 'a';
