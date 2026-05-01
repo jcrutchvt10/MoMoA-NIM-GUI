@@ -16,6 +16,21 @@
 
 import WebSocket from 'ws';
 
+const DEFAULT_PROGRESS_UPDATE_TIMEOUT_MS = 5 * 60 * 1000;
+
+function getProgressUpdateTimeoutMs(): number {
+  const configured = Number.parseInt(
+    process.env.MOMOA_PROGRESS_UPDATE_TIMEOUT_MS ?? '',
+    10,
+  );
+
+  if (Number.isFinite(configured) && configured >= 30_000) {
+    return configured;
+  }
+
+  return DEFAULT_PROGRESS_UPDATE_TIMEOUT_MS;
+}
+
 interface ProgressQueueItem {
   id: number;
   resolved: boolean;
@@ -27,6 +42,7 @@ interface ProgressQueueItem {
 export class ProgressQueue {
   private queue: ProgressQueueItem[] = [];
   private idCounter = 0;
+  private readonly timeoutMs = getProgressUpdateTimeoutMs();
 
   constructor(
     private ws: WebSocket,
@@ -62,8 +78,8 @@ export class ProgressQueue {
           queueMicrotask(() => this.process());
         });
 
-      // Add a 50ms buffer to ensure Date.now() - addedAt is strictly >= 30000
-      setTimeout(() => this.process(), 30050);
+      // Add a small buffer so the timeout branch can trip deterministically.
+      setTimeout(() => this.process(), this.timeoutMs + 50);
     }
   }
 
@@ -111,13 +127,15 @@ export class ProgressQueue {
       // Allow timeout if a subsequent item is resolved OR errored (both mean the future moved on)
       const hasFinishedSubsequent = this.queue.slice(1).some(q => q.resolved || q.error);
 
-      if (timeInQueue >= 29900 && hasFinishedSubsequent) {
-        console.log(`Sending timeout payload for unresolved progress update (client ${this.clientUUID}).`);
+      if (timeInQueue >= this.timeoutMs - 100 && hasFinishedSubsequent) {
+        console.log(
+          `Sending timeout payload for unresolved progress update (client ${this.clientUUID}).`,
+        );
         
         try {
           this.ws.send(JSON.stringify({
             status: 'PROGRESS_UPDATES',
-            completed_status_message: `Update failed: Operation timed out after 30 seconds`,
+            completed_status_message: `Update failed: Operation timed out after ${Math.round(this.timeoutMs / 1000)} seconds`,
           }));
         } catch (e) {
           console.error('Failed to send timeout update, will retry:', e);

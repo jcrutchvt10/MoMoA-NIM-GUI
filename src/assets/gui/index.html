@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MoMoA — Mixture of Mixture of Agents</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div>
+        <p class="eyebrow">MoMoA Control Room</p>
+        <h1>Mixture of Mixture of Agents</h1>
+        <p class="lede">Coordinate independent LLM experts to solve complex, long-running engineering tasks that exceed the capabilities of a single-agent loop.</p>
+        <div class="about-block">
+          <p>MoMoA breaks large projects into sub-tasks assigned to dynamic <strong>Work Phase Rooms</strong>. Inside each room, two opposing experts — such as a Creative Developer and a Conservative Senior Engineer — debate and validate each other's work before reporting to an Orchestrator.</p>
+          <p>A background <strong>Overseer</strong> fires every 15 minutes to detect and break circular logic loops.</p>
+          <div class="nim-badge">
+            <span class="nim-dot"></span>
+            Powered by <strong>NVIDIA NIM</strong> &mdash; <code>minimaxai/minimax-m2.7</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-bar">
+        <span id="settings-server-display" class="settings-server-label">Not connected</span>
+        <button id="open-settings" type="button" class="ghost-button settings-btn" title="Connection settings">⚙ Settings</button>
+      </div>
+
+      <form id="launch-form" class="panel form-panel">
+        <label>
+          <span>Prompt</span>
+          <textarea id="prompt" rows="6" placeholder="Describe the project task"></textarea>
+        </label>
+
+        <div class="grid two-up">
+          <label>
+            <span>Mode</span>
+            <select id="mode">
+              <option value="developer">developer</option>
+              <option value="analyzer">analyzer</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Max Turns</span>
+            <input id="max-turns" type="number" min="1" max="100" value="15" />
+          </label>
+        </div>
+
+        <label>
+          <span>Assumptions</span>
+          <textarea id="assumptions" rows="4" placeholder="Optional assumptions for the agent"></textarea>
+        </label>
+
+        <label>
+          <span>Project Specification</span>
+          <textarea id="spec" rows="4" placeholder="Optional project specification"></textarea>
+        </label>
+
+        <label>
+          <span>Environment Instructions</span>
+          <textarea id="env-instructions" rows="4" placeholder="Optional environment instructions"></textarea>
+        </label>
+
+        <div class="picker-row">
+          <label class="picker">
+            <span>Files</span>
+            <input id="file-input" type="file" multiple />
+          </label>
+
+          <label class="picker">
+            <span>Folder</span>
+            <input id="directory-input" type="file" webkitdirectory directory multiple />
+          </label>
+        </div>
+
+        <label class="toggle">
+          <input id="save-files" type="checkbox" checked />
+          <span>Save returned files in the browser session</span>
+        </label>
+
+        <div class="selection-summary" id="selection-summary">No files selected.</div>
+
+        <button id="launch-button" type="submit">Launch Project</button>
+        <p class="footnote">Directory uploads are filtered for common bulky folders like <code>.git</code> and <code>node_modules</code>.</p>
+      </form>
+
+      <section class="panel sessions-panel">
+        <div class="panel-header">
+          <h2>Sessions</h2>
+          <button id="clear-sessions" type="button" class="ghost-button">Clear</button>
+        </div>
+        <div id="session-list" class="session-list"></div>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <section class="panel live-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">NVIDIA NIM · Live Monitor</p>
+            <h2 id="session-title">No session selected</h2>
+          </div>
+          <div id="session-status" class="status-chip idle">Idle</div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-card">
+            <span class="stat-label">Files</span>
+            <strong id="session-files">0</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Bytes</span>
+            <strong id="session-bytes">0 B</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Updates</span>
+            <strong id="session-updates">0</strong>
+          </div>
+        </div>
+
+        <section class="stream-block">
+          <div class="stream-header">
+            <h3>Progress Stream</h3>
+            <button id="copy-log" type="button" class="ghost-button">Copy Log</button>
+          </div>
+          <div id="progress-stream" class="stream"></div>
+        </section>
+
+        <section id="question-panel" class="question-panel hidden">
+          <div class="stream-header">
+            <h3>Agent Question</h3>
+          </div>
+          <p id="question-text"></p>
+          <div class="question-actions">
+            <textarea id="question-answer" rows="3" placeholder="Type your answer"></textarea>
+            <button id="submit-answer" type="button">Send Answer</button>
+          </div>
+        </section>
+
+        <section class="grid two-column-layout">
+          <div class="panel nested-panel">
+            <div class="stream-header">
+              <h3>Result</h3>
+            </div>
+            <pre id="result-output" class="result-box"></pre>
+          </div>
+
+          <div class="panel nested-panel">
+            <div class="stream-header">
+              <h3>Downloads</h3>
+            </div>
+            <div id="downloads" class="downloads"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <template id="session-item-template">
+    <button type="button" class="session-item">
+      <span class="session-item-title"></span>
+      <span class="session-item-meta"></span>
+    </button>
+  </template>
+
+  <!-- Settings / Connection overlay -->
+  <div id="settings-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="settings-heading">
+    <div class="overlay-card">
+      <p class="eyebrow">Connection Setup</p>
+      <h2 id="settings-heading">Connect to a MoMoA Server</h2>
+      <p class="overlay-lede">MoMoA runs a WebSocket server that handles all AI calls. Enter your MoMoA server endpoint (default <code>ws://localhost:3007</code>) and your NVIDIA NIM API key. These are saved only in <strong>this browser</strong> and sent directly to your server, never to GitHub.</p>
+      <form id="settings-form" class="settings-form">
+        <label>
+          <span>Server WebSocket URL</span>
+          <input id="settings-server-url" type="text" placeholder="ws://localhost:3007" autocomplete="off" />
+          <span class="field-hint">This must be your MoMoA WebSocket endpoint. Do not enter <code>https://integrate.api.nvidia.com/v1</code> here. Use <code>wss://</code> for HTTPS servers.</span>
+        </label>
+        <label>
+          <span>NVIDIA NIM API Key</span>
+          <input id="settings-nim-key" type="password" placeholder="nvapi-..." autocomplete="new-password" spellcheck="false" />
+          <span class="field-hint">Obtain a key at <a href="https://build.nvidia.com" target="_blank" rel="noopener">build.nvidia.com</a>.</span>
+        </label>
+        <div class="settings-actions">
+          <button type="submit" id="settings-save">Save &amp; Connect</button>
+          <button type="button" id="settings-cancel" class="ghost-button">Cancel</button>
+        </div>
+      </form>
+      <p class="footnote settings-footnote">Don't have a server? See the <a href="https://github.com/retomeier/momoa" target="_blank" rel="noopener">MoMoA README</a> for setup instructions.</p>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

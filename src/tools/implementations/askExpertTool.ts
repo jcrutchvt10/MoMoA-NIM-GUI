@@ -22,7 +22,7 @@ import { getFilesAndContent, removeBacktickFences } from '../../utils/markdownUt
 import { getAssetString, getToolPreamblePrompt, replaceRuntimePlaceholders } from '../../services/promptManager.js';
 import { generateDiff } from '../../utils/diffGenerator.js';
 import { getFormattedCacheContents } from './urlFetchTool.js';
-import { Part } from '@google/genai';
+import { Part } from '../../shared/llmTypes.js';
 
 /**
  * Implements the File Reader Tool, providing functionality to read file content

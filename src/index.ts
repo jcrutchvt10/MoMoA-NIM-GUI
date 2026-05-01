@@ -14,14 +14,28 @@
  * limitations under the License.
  */
 
+import dotenv from 'dotenv';
+const dotenvResult = dotenv.config({ override: true });
+console.log('dotenv loaded:', !dotenvResult.error, '| NVIDIA_API_KEY ends in:', process.env.NVIDIA_API_KEY?.slice(-6) ?? 'NOT SET');
 import express, { Application } from 'express';
 import http from 'http';
+import path from 'node:path';
 import process from 'process';
+import { fileURLToPath } from 'node:url';
 import { initializeWebSocketServer } from './websocket_server.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const guiPath = path.join(__dirname, 'assets', 'gui');
 
 // --- Server Setup ---
 const app: Application = express();
 const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3007;
+
+app.use('/gui', express.static(guiPath));
+app.get('/', (_req, res) => {
+  res.redirect('/gui');
+});
 
 // --- Server Initialization ---
 const server: http.Server = http.createServer(app);

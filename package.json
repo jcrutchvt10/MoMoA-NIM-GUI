@@ -4,6 +4,7 @@
   "scripts": {
     "build": "npm run build:server",
     "build:server": "rimraf dist && tsc && copyfiles -u 1 \"src/assets/**/*\" dist",
+    "docs:deploy": "npm run build && rimraf docs && copyfiles -u 3 \"dist/assets/gui/**/*\" docs",
     "start": "node dist/index.js",
     "dev:server": "PORT=3007 NODE_ENV=development tsx watch src/index.ts",
     "dev": "concurrently npm:dev:server"
@@ -43,6 +44,7 @@
     "concurrently": "^9.2.1",
     "cors": "^2.8.5",
     "diff": "^8.0.2",
+    "dotenv": "^17.4.2",
     "e2b": "^2.15.0",
     "express": "^5.1.0",
     "firebase-admin": "^13.6.0",
@@ -52,6 +54,7 @@
     "isbinaryfile": "^5.0.6",
     "jsdom": "^28.0.0",
     "mime-types": "^3.0.2",
+    "openai": "^6.35.0",
     "simple-git": "^3.28.0",
     "ts-node": "^10.9.2"
   }

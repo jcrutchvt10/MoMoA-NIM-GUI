@@ -23,7 +23,7 @@ import {
   BlockedReason,
   Tool,
   Type,
-} from '@google/genai';
+} from '../shared/llmTypes.js';
 import { ApiPolicyManager } from './apiPolicyManager.js';
 import { DEFAULT_GEMINI_FLASH_MODEL } from '../config/models.js';
 import { TranscriptManager } from './transcriptManager.js';
@@ -31,7 +31,14 @@ import { ContentGenerator, createContentGenerator, ContentGeneratorConfig, AuthT
 import { FormattedTranscriptEntry, GeminiClientConfig, MarkerPair, ToolFunctionDeclaration } from '../momoa_core/types.js';
 import { LlmBlockedError } from '../shared/errors.js';
 
-const MAX_ATTEMPTS = 6;
+const MAX_ATTEMPTS = 10;
+
+function maskApiKey(value: string): string {
+  if (value.length <= 8) {
+    return '***';
+  }
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
 
 /**
  * Interface for options passed to content generation methods.
@@ -86,13 +93,13 @@ export class GeminiClient {
       return this.contentGenerators.get(apiKey)!;
     }
 
-    console.log(`Creating new Content Generator for API Key ${apiKey} (for ${model}).`)
+    console.log(`Creating new Content Generator for API Key ${maskApiKey(apiKey)} (for ${model}).`)
 
     const generatorPromise = (async () => {
       try {
         const contentGeneratorConfig: ContentGeneratorConfig = {
           model: model, // Use the requested model for initial config
-          authType: AuthType.USE_GEMINI,
+          authType: AuthType.USE_NIM,
           apiKey: apiKey,
         };
         
@@ -696,18 +703,13 @@ export class GeminiClient {
     const model = options?.model || DEFAULT_GEMINI_FLASH_MODEL;
     
     const toolsArray: Tool[] = [];
-    if (options?.enableGrounding) {
-        toolsArray.push({ googleSearch: {} });
-    }
+    // enableGrounding (Google Search) is not supported on NIM — ignored.
 
     const generateConfig: GenerateContentConfig = {
       temperature: options?.temperature,
       tools: toolsArray.length > 0 ? toolsArray : undefined,
       // thinkingConfig: options?.enableThinking ? { includeThoughts: true } : undefined,
     };
-    if (options?.enableGrounding && generateConfig.temperature === undefined) {
-        generateConfig.temperature = 0;
-    }
 
     const contents: Content[] = [
       {
@@ -731,11 +733,7 @@ export class GeminiClient {
     const model = options?.model || DEFAULT_GEMINI_FLASH_MODEL;
 
     const toolsArray: Tool[] = [];
-    
-    // Handle Google Search (Grounding)
-    if (options?.enableGrounding) {
-      toolsArray.push({ googleSearch: {} });
-    }
+    // enableGrounding (Google Search) is not supported on NIM — ignored.
 
     // FIX: Map local tool types to SDK SchemaType Enums
     if (options?.tools && options.tools.length > 0) {
@@ -762,12 +760,6 @@ export class GeminiClient {
       temperature: options?.temperature,
       tools: toolsArray.length > 0 ? toolsArray : undefined,
     };
-    if (options?.enableGrounding) {
-      if (generateConfig.temperature === undefined) {
-        generateConfig.temperature = 0;
-      }
-    }
-
     const contents: Content[] = this._mapFormattedTranscriptToContent(transcriptManager?.getTranscript() ?? []);
 
     const response = await this._generateContentWithRetries(

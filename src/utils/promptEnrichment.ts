@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Part } from "@google/genai";
+import { Part } from "../shared/llmTypes.js";
 import { DEFAULT_GEMINI_PRO_MODEL } from "../config/models.js";
 import { GeminiClient } from "../services/geminiClient.js";
 import { getAssetString, replaceRuntimePlaceholders } from "../services/promptManager.js";

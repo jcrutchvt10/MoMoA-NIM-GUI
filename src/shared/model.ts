@@ -61,7 +61,7 @@ export interface InitialRequestData {
 }
 
 export interface UserSecrets {
-  geminiApiKey: string;
+  nvidiaApiKey: string;
   julesApiKey: string;
   githubToken: string;
   stitchApiKey: string;

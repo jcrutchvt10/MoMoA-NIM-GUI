@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
-export const DEFAULT_GEMINI_PRO_MODEL = 'gemini-3.1-pro-preview'; 
-export const DEFAULT_GEMINI_FLASH_MODEL = 'gemini-2.5-flash';
-export const DEFAULT_GEMINI_LITE_MODEL = 'gemini-3.1-flash-lite-preview';
-export const DEFAULT_GEMINI_EMBEDDING_MODEL = 'gemini-embedding-001';
+export const DEFAULT_GEMINI_MODEL = 'minimaxai/minimax-m2.7';
+export const DEFAULT_GEMINI_PRO_MODEL = 'minimaxai/minimax-m2.7';
+export const DEFAULT_GEMINI_FLASH_MODEL = 'minimaxai/minimax-m2.7';
+export const DEFAULT_GEMINI_LITE_MODEL = 'minimaxai/minimax-m2.7';
+export const DEFAULT_GEMINI_EMBEDDING_MODEL = 'nvidia/nv-embedqa-e5-v5';

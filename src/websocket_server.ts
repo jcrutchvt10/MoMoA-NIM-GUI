@@ -31,9 +31,14 @@ import { ProgressQueue } from './utils/progressQueue.js';
  */
 interface WebSocketMessage {
   status: 'INITIAL_REQUEST_PARAMS' | 'FILE_CHUNK' | 'START_TASK' | 'HITL_RESPONSE' | string;
-  data?: any;
+  data?: unknown;
   messageId?: string;
-  answer?: any;
+  answer?: unknown;
+}
+
+interface UploadedFile {
+  name: string;
+  content: string;
 }
 
 /**
@@ -47,7 +52,7 @@ interface InitialRequestData {
   llmName: string;
   maxTurns?: number;
   assumptions?: string;
-  files?: { name: string, content: string }[]; // This will be populated by chunks
+  files?: UploadedFile[]; // This will be populated by chunks
   apiKey?: string;
   saveFiles?: boolean; 
   mode?: ServerMode;
@@ -57,13 +62,21 @@ interface InitialRequestData {
   weaveId?: string;
   maxDurationMs?: number;
   gracePeriodMs?: number;
+  secrets?: {
+    nvidiaApiKey?: string;
+    githubToken?: string;
+    julesApiKey?: string;
+    stitchApiKey?: string;
+    e2BApiKey?: string;
+    githubScratchPadRepo?: string;
+  };
 }
 
 /**
  * Defines the structure for the data in a 'FILE_CHUNK' message.
  */
 interface FileChunkData {
-  files: { name: string, content: string }[];
+  files: UploadedFile[];
 }
 
 
@@ -77,6 +90,52 @@ const abortControllers: Map<string, AbortController> = new Map();
 
 // Map to store pending task data before all files are received
 const pendingTasks: Map<string, InitialRequestData> = new Map();
+
+function getPositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.warn(`Invalid ${name}=${raw}. Using fallback ${fallback}.`);
+    return fallback;
+  }
+
+  return parsed;
+}
+
+const MAX_UPLOADED_FILES = getPositiveIntEnv('MOMOA_MAX_UPLOADED_FILES', 5000);
+const MAX_SINGLE_FILE_BYTES = getPositiveIntEnv('MOMOA_MAX_SINGLE_FILE_BYTES', 10 * 1024 * 1024);
+const MAX_TOTAL_UPLOAD_BYTES = getPositiveIntEnv('MOMOA_MAX_TOTAL_UPLOAD_BYTES', 100 * 1024 * 1024);
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isUploadedFile(value: unknown): value is UploadedFile {
+  return isObject(value)
+    && typeof value.name === 'string'
+    && value.name.length > 0
+    && typeof value.content === 'string';
+}
+
+function isInitialRequestData(value: unknown): value is InitialRequestData {
+  return isObject(value)
+    && typeof value.prompt === 'string'
+    && typeof value.llmName === 'string';
+}
+
+function isFileChunkData(value: unknown): value is FileChunkData {
+  return isObject(value)
+    && Array.isArray(value.files)
+    && value.files.every(isUploadedFile);
+}
+
+function base64Bytes(base64Content: string): number {
+  return Buffer.byteLength(base64Content, 'base64');
+}
 
 
 /**
@@ -152,18 +211,18 @@ async function handleIncomingMessage(clientUUID: string, message: WebSocket.RawD
 
     switch (parsedMessage.status) {
       case 'INITIAL_REQUEST_PARAMS':
-        if (parsedMessage.data) {
+        if (isInitialRequestData(parsedMessage.data)) {
           handleInitialRequestParams(clientUUID, parsedMessage.data);
         } else {
-          console.error(`Error: 'data' property is missing for INITIAL_REQUEST_PARAMS from client ${clientUUID}`);
+          console.error(`Error: invalid 'data' for INITIAL_REQUEST_PARAMS from client ${clientUUID}`);
         }
         break;
 
       case 'FILE_CHUNK':
-        if (parsedMessage.data) {
+        if (isFileChunkData(parsedMessage.data)) {
           handleFileChunk(clientUUID, parsedMessage.data);
         } else {
-          console.error(`Error: 'data' property is missing for FILE_CHUNK from client ${clientUUID}`);
+          console.error(`Error: invalid 'data' for FILE_CHUNK from client ${clientUUID}`);
         }
         break;
 
@@ -229,14 +288,45 @@ async function handleFileChunk(clientUUID: string, chunkData: FileChunkData): Pr
     return;
   }
 
-  if (!chunkData.files || !Array.isArray(chunkData.files)) {
-    sendMessage(clientUUID, JSON.stringify({ status: 'ERROR', message: 'Error: Invalid file chunk format.' }));
+  const incomingFiles = chunkData.files;
+
+  const existingFiles = task.files || [];
+  if (existingFiles.length + incomingFiles.length > MAX_UPLOADED_FILES) {
+    sendMessage(clientUUID, JSON.stringify({
+      status: 'ERROR',
+      message: `Error: Too many files uploaded. Maximum allowed is ${MAX_UPLOADED_FILES}.`
+    }));
+    return;
+  }
+
+  for (const file of incomingFiles) {
+    if (!file.name.trim()) {
+      sendMessage(clientUUID, JSON.stringify({ status: 'ERROR', message: 'Error: File name cannot be empty.' }));
+      return;
+    }
+    const fileSize = base64Bytes(file.content);
+    if (fileSize > MAX_SINGLE_FILE_BYTES) {
+      sendMessage(clientUUID, JSON.stringify({
+        status: 'ERROR',
+        message: `Error: File ${file.name} exceeds max file size (${MAX_SINGLE_FILE_BYTES} bytes).`
+      }));
+      return;
+    }
+  }
+
+  const existingBytes = existingFiles.reduce((sum, file) => sum + base64Bytes(file.content), 0);
+  const incomingBytes = incomingFiles.reduce((sum, file) => sum + base64Bytes(file.content), 0);
+  if (existingBytes + incomingBytes > MAX_TOTAL_UPLOAD_BYTES) {
+    sendMessage(clientUUID, JSON.stringify({
+      status: 'ERROR',
+      message: `Error: Total upload size exceeds limit (${MAX_TOTAL_UPLOAD_BYTES} bytes).`
+    }));
     return;
   }
 
   // Append received files to the task's file list
-  task.files = (task.files || []).concat(chunkData.files);
-  console.log(`Received ${chunkData.files.length} files from client ${clientUUID}. Total files: ${task.files.length}`);
+  task.files = existingFiles.concat(incomingFiles);
+  console.log(`Received ${incomingFiles.length} files from client ${clientUUID}. Total files: ${task.files.length}`);
 
   // Send chunk acknowledgment
   sendMessage(clientUUID, JSON.stringify({ status: 'CHUNK_RECEIVED' }));
@@ -291,7 +381,7 @@ async function handleInitialRequest(clientUUID: string, requestData: InitialRequ
       gracePeriodMs
     } = requestData;
 
-    const projectSpecification = "";
+    const projectSpecification = requestProjectSpecification ?? "";
 
     // 1. Create a new, request-specific Config instance
     const requestConfig = new Config({
@@ -306,7 +396,11 @@ async function handleInitialRequest(clientUUID: string, requestData: InitialRequ
       fullContext: false,
     });
 
-    await requestConfig.refreshAuth(AuthType.USE_GEMINI);
+    const clientNimKey = requestData.secrets?.nvidiaApiKey?.trim();
+    await requestConfig.refreshAuth(
+      AuthType.USE_NIM,
+      clientNimKey ? { nvidiaApiKey: clientNimKey } : undefined
+    );
 
     const geminiClient = await requestConfig.getGeminiClient();
 
@@ -345,12 +439,12 @@ async function handleInitialRequest(clientUUID: string, requestData: InitialRequ
     }
 
     const secrets: UserSecrets = {
-      geminiApiKey: process.env.GEMINI_API_KEY || '',
-      julesApiKey: process.env.JULES_API_KEY || '',
-      githubToken: process.env.GITHUB_TOKEN || '',
-      stitchApiKey: process.env.STITCH_API_KEY || '',
-      e2BApiKey: process.env.E2B_API_KEY || '',
-      githubScratchPadRepo: process.env.GITHUB_SCRATCHPAD_REPO || '',
+      nvidiaApiKey: requestData.secrets?.nvidiaApiKey?.trim() || process.env.NVIDIA_API_KEY || '',
+      julesApiKey: requestData.secrets?.julesApiKey?.trim() || process.env.JULES_API_KEY || '',
+      githubToken: requestData.secrets?.githubToken?.trim() || process.env.GITHUB_TOKEN || '',
+      stitchApiKey: requestData.secrets?.stitchApiKey?.trim() || process.env.STITCH_API_KEY || '',
+      e2BApiKey: requestData.secrets?.e2BApiKey?.trim() || process.env.E2B_API_KEY || '',
+      githubScratchPadRepo: requestData.secrets?.githubScratchPadRepo?.trim() || process.env.GITHUB_SCRATCHPAD_REPO || '',
     };
 
     const orchestrator = new Orchestrator(
@@ -410,7 +504,8 @@ async function handleHitlResponse(clientUUID: string, answer: any): Promise<void
 
   if (orchestrator) {
     // The orchestrator's internal resolver handles the response.
-    orchestrator.resolveHitl(answer);
+    const normalizedAnswer = typeof answer === 'string' ? answer : JSON.stringify(answer);
+    orchestrator.resolveHitl(normalizedAnswer);
   } else {
     console.error(`No active orchestrator found for client ${clientUUID} to handle HITL response.`);
   }

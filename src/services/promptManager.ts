@@ -62,7 +62,7 @@ async function loadPromptsRecursive(directory: string, relativePath: string = ''
       const { content, data } = matter(fileContent);
       const promptKey = currentRelativePath.replace(/\.md$/, '');
 
-      rawPrompts.set(promptKey, { content, metadata: data as PromptMetadata });
+      rawPrompts.set(promptKey.replace(/\\/g, '/'), { content, metadata: data as PromptMetadata });
     }
   }
 }

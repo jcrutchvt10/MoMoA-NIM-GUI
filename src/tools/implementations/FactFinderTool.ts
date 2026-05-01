@@ -21,7 +21,7 @@ import { DEFAULT_GEMINI_FLASH_MODEL, DEFAULT_GEMINI_LITE_MODEL, DEFAULT_GEMINI_P
 import { removeBacktickFences } from '../../utils/markdownUtils.js';
 import { getAssetString, getToolPreamblePrompt, replaceRuntimePlaceholders } from '../../services/promptManager.js';
 import { TranscriptManager } from '../../services/transcriptManager.js';
-import { Part } from '@google/genai';
+import { Part } from '../../shared/llmTypes.js';
 
 /**
  * Helper function to fetch content from a URL and summarize it using an LLM.
